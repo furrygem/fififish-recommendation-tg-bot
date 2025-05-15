@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: telegram-post-bot
+    restart: unless-stopped
+    volumes:
+      - ./bot_session.session:/app/bot_session.session
+    env_file:
+      - .env 
