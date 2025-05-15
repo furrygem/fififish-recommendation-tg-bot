@@ -1,8 +1,7 @@
 from typing import Dict, Optional, Union
 from telethon import TelegramClient, events
 from telethon.tl.types import (
-    User, BotCommand, BotCommandScopeDefault,
-    InputPeerUser, InputPeerChannel
+    User, BotCommand, BotCommandScopeDefault, InputPeerChannel
 )
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.custom import Message
@@ -10,8 +9,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from config import (
-    API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, TARGET_CHANNEL,
-    POST_TIMEOUT_HOURS, POST_COOLDOWN_MINUTES
+    API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, TARGET_CHANNEL, POST_COOLDOWN_MINUTES
 )
 
 # Configure logging
