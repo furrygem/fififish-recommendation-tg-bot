@@ -1,5 +1,5 @@
-from typing import Dict, Optional, Union
-from telethon import TelegramClient, events
+from typing import Dict, Optional, Union, Tuple
+from telethon import TelegramClient, events, Button
 from telethon.tl.types import (
     User, BotCommand, BotCommandScopeDefault, InputPeerChannel,
     MessageMediaPhoto, MessageMediaDocument
@@ -123,7 +123,7 @@ async def notify_user(user_id: int, message: str) -> None:
     except Exception as e:
         logger.error(f"Failed to notify user {user_id}: {e}")
 
-def can_user_post(user_id: int) -> tuple[bool, Optional[timedelta]]:
+def can_user_post(user_id: int) -> Tuple[bool, Optional[timedelta]]:
     """Check if a user can post based on cooldown."""
     if user_id not in user_cooldowns:
         return True, None
@@ -205,6 +205,14 @@ async def media_handler(event: events.NewMessage.Event) -> None:
         "✅ Your post has been received and is pending approval by an admin."
     )
 
+    # Create approve/reject buttons
+    buttons = [
+        [
+            Button.inline("✅ Approve", f"approve_{post_id}"),
+            Button.inline("❌ Reject", f"reject_{post_id}")
+        ]
+    ]
+
     for admin_id in ADMIN_IDS:
         try:
             admin_entity = await get_user_entity(admin_id)
@@ -212,59 +220,72 @@ async def media_handler(event: events.NewMessage.Event) -> None:
                 await client.send_message(
                     admin_entity,
                     f"New post pending approval (ID: {post_id})\n"
-                    f"From user: {event.sender_id}"
+                    f"From user: {event.sender_id}",
+                    buttons=buttons
                 )
                 await client.forward_messages(admin_entity, event.message)
         except Exception as e:
             logger.error(f"Failed to forward to admin {admin_id}: {e}")
 
-@client.on(events.NewMessage(pattern=r'^/approve\s+\d+$'))
-async def approve_handler(event: events.NewMessage.Event) -> None:
-    """Handle the /approve command."""
+@client.on(events.CallbackQuery(pattern=r"^approve_(\d+)$"))
+async def approve_callback(event: events.CallbackQuery.Event) -> None:
+    """Handle approve button callback."""
     if event.sender_id not in ADMIN_IDS:
-        await event.respond("❌ This command is only available to admins.")
+        await event.answer("❌ This action is only available to admins.", alert=True)
         return
 
     try:
-        post_id = int(event.text.split()[1].strip())
+        post_id = int(event.pattern_match.group(1))
         if post_id not in pending_posts:
-            await event.respond(f"❌ Invalid post ID! Available IDs: {list(pending_posts.keys())}")
+            await event.answer("❌ Invalid post ID!", alert=True)
             return
 
         post = pending_posts[post_id]
         if not await send_to_channel(post['message']):
-            await event.respond("❌ Failed to send to target channel. Please check the channel ID.")
+            await event.answer("❌ Failed to send to target channel!", alert=True)
             return
 
         await notify_user(post['user_id'], "✅ Your post has been approved and published!")
         del pending_posts[post_id]
-        await event.respond("✅ Post approved and published!")
+        
+        # Update the message to show it was approved
+        await event.edit(
+            f"✅ Post {post_id} has been approved and published!",
+            buttons=None
+        )
+        await event.answer("Post approved!")
 
-    except (ValueError, IndexError) as e:
-        logger.error(f"Error in approve handler: {e}")
-        await event.respond("❌ Please use format: /approve <post_id>")
+    except Exception as e:
+        logger.error(f"Error in approve callback: {e}")
+        await event.answer("❌ An error occurred!", alert=True)
 
-@client.on(events.NewMessage(pattern=r'^/reject\s+\d+$'))
-async def reject_handler(event: events.NewMessage.Event) -> None:
-    """Handle the /reject command."""
+@client.on(events.CallbackQuery(pattern=r"^reject_(\d+)$"))
+async def reject_callback(event: events.CallbackQuery.Event) -> None:
+    """Handle reject button callback."""
     if event.sender_id not in ADMIN_IDS:
-        await event.respond("❌ This command is only available to admins.")
+        await event.answer("❌ This action is only available to admins.", alert=True)
         return
 
     try:
-        post_id = int(event.text.split()[1].strip())
+        post_id = int(event.pattern_match.group(1))
         if post_id not in pending_posts:
-            await event.respond(f"❌ Invalid post ID! Available IDs: {list(pending_posts.keys())}")
+            await event.answer("❌ Invalid post ID!", alert=True)
             return
 
         post = pending_posts[post_id]
         await notify_user(post['user_id'], "❌ Your post has been rejected.")
         del pending_posts[post_id]
-        await event.respond("✅ Post rejected!")
+        
+        # Update the message to show it was rejected
+        await event.edit(
+            f"❌ Post {post_id} has been rejected.",
+            buttons=None
+        )
+        await event.answer("Post rejected!")
 
-    except (ValueError, IndexError) as e:
-        logger.error(f"Error in reject handler: {e}")
-        await event.respond("❌ Please use format: /reject <post_id>")
+    except Exception as e:
+        logger.error(f"Error in reject callback: {e}")
+        await event.answer("❌ An error occurred!", alert=True)
 
 async def main() -> None:
     """Start the bot."""
