@@ -1,7 +1,8 @@
 from typing import Dict, Optional, Union
 from telethon import TelegramClient, events
 from telethon.tl.types import (
-    User, BotCommand, BotCommandScopeDefault, InputPeerChannel
+    User, BotCommand, BotCommandScopeDefault, InputPeerChannel,
+    MessageMediaPhoto, MessageMediaDocument
 )
 from telethon.tl.functions.bots import SetBotCommandsRequest
 from telethon.tl.custom import Message
@@ -26,6 +27,25 @@ client = TelegramClient('bot_session', API_ID, API_HASH)
 pending_posts: Dict[int, dict] = {}
 user_entities: Dict[int, User] = {}
 user_cooldowns: Dict[int, datetime] = {}
+
+# Allowed image MIME types
+ALLOWED_MIME_TYPES = {
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp'
+}
+
+def is_image_file(message: Message) -> bool:
+    """Check if the message contains an image file."""
+    if isinstance(message.media, MessageMediaPhoto):
+        return True
+    
+    if isinstance(message.media, MessageMediaDocument):
+        mime_type = message.media.document.mime_type
+        return mime_type in ALLOWED_MIME_TYPES
+    
+    return False
 
 async def setup_commands() -> None:
     """Set up bot commands for all users."""
@@ -79,14 +99,16 @@ async def send_to_channel(message: Message) -> bool:
         if not channel:
             return False
 
+        caption = "#предложка"
+
         if message.media:
             await client.send_file(
                 channel,
                 message.media,
-                caption=message.text if message.text else None
+                caption=caption
             )
         else:
-            await client.send_message(channel, message.text)
+            await client.send_message(channel, caption)
         return True
     except Exception as e:
         logger.error(f"Failed to send message to channel: {e}")
@@ -150,6 +172,13 @@ async def help_handler(event: events.NewMessage.Event) -> None:
 async def media_handler(event: events.NewMessage.Event) -> None:
     """Handle incoming media messages."""
     if not isinstance(event.sender, User):
+        return
+
+    # Verify that the file is an image
+    if not is_image_file(event.message):
+        await event.respond(
+            "❌ Please send only image files (JPEG, PNG, GIF, or WebP)."
+        )
         return
 
     # Check cooldown
